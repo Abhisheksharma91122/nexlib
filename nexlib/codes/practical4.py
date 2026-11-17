@@ -1,234 +1,87 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import pandas as pd 
-import matplotlib.pyplot as plt 
-import time 
-from torch.utils.data import DataLoader, TensorDataset, random_split
+import pandas as pd
+import tensorflow as tf
+import matplotlib.pyplot as plt
 
 
-# Load CSV files
-train_data = pd.read_csv("./Handwritten/mnist_train.csv")
-test_data = pd.read_csv("./Handwritten/mnist_test.csv")
+train = pd.read_csv('./Handwritten/mnist_train.csv')
+test = pd.read_csv('./Handwritten/mnist_test.csv')
 
-# seperate images and labels 
-X_train = torch.tensor(train_data.iloc[:, 1:].values, dtype=torch.float32) / 255.0
-y_train = torch.tensor(train_data.iloc[:, 0].values, dtype=torch.long)
-
-X_test = torch.tensor(test_data.iloc[:, 1:].values, dtype=torch.float32) / 255.0
-y_test = torch.tensor(test_data.iloc[:, 0].values, dtype=torch.long)
-
-# create dataset 
-train_dataset = TensorDataset(X_train, y_train)
-test_dataset = TensorDataset(X_test, y_test)
-
-# seperate data as training and validationabs
-train_size = int(0.8 * len(train_dataset))
-val_size = len(train_dataset) - train_size
-
-train_dataset, val_dataset = random_split(
-    train_dataset, [train_size, val_size]
-)
-
-# create data Loader
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-
-print("MNIST Dataset Loaded Successfully!")
+X_train, y_train = train.iloc[:,1:].values/255.0, train.iloc[:,0]
+X_test, y_test = test.iloc[:,1:].values/255.0, test.iloc[:,0]
 
 
-# MLP model with a selectable activation function
+def create_model(activation='relu'):
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(784,)),
+        tf.keras.layers.Dense(128, activation=activation),
+        tf.keras.layers.Dense(64, activation=activation),
+        tf.keras.layers.Dense(10, activation='softmax')
+    ])
 
-class NeuralNetwork(nn.Module):
-    def __init__(self, activation):
-        super().__init__()
-        self.fc1 = nn.Linear(784, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 10)
-
-        if activation == "sigmoid":
-            self.activation = nn.Sigmoid()
-        elif activation == "tanh":
-            self.activation = nn.Tanh()
-        else:
-            self.activation = nn.ReLU()
-
-    def forward(self, x):
-        x = x.view(-1, 784)
-        x = self.activation(self.fc1(x))
-        x = self.activation(self.fc2(x))
-        x = self.fc3(x)
-        return x
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+    return model
 
 
+relu_model = create_model()
+relu_history = relu_model.fit(X_train, y_train, epochs=5, batch_size=64,
+                              validation_data=(X_test, y_test))
+relu_loss, relu_accuracy = relu_model.evaluate(X_test, y_test)
 
-# train and evaluate one model 
+sigmoid_model = create_model('sigmoid')
+sigmoid_history = sigmoid_model.fit(X_train, y_train, epochs=5, batch_size=64,
+                                    validation_data=(X_test, y_test))
+sigmoid_loss, sigmoid_accuracy = sigmoid_model.evaluate(X_test, y_test)
 
-def train_model(model, epochs=5):
+tanh_model = create_model('tanh')
+tanh_history = tanh_model.fit(X_train, y_train, epochs=5, batch_size=64,
+                              validation_data=(X_test, y_test))
+tanh_loss, tanh_accuracy = tanh_model.evaluate(X_test, y_test)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    
-    train_accuracies = []
-    val_accuracies = []
-    epoch_time = []
-    gradient_flow = []
-
-    for epoch in range(epochs):
-
-        start_time = time.time()
-        model.train()
-        
-        total = 0
-        correct = 0 
-        total_loss = 0 
-        layer1_grad = 0 
-        layer2_grad = 0
-        batches = 0
-
-        for images, labels in train_loader:
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-
-            optimizer.zero_grad()
-            loss.backward()
-
-            # Record gradient size for the two hidden layers
-            layer1_grad += model.fc1.weight.grad.norm().item()
-            layer2_grad += model.fc2.weight.grad.norm().item()
-            batches += 1
-
-            optimizer.step()
-
-            predicted = outputs.argmax(1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-            total_loss += loss.item()
-
-        train_accuracies.append(100 * correct / total)
-        gradient_flow.append([
-            layer1_grad / batches,
-            layer2_grad / batches
-        ])
+print("ReLU Accuracy:", relu_accuracy * 100)
+print("Sigmoid Accuracy:", sigmoid_accuracy * 100)
+print("Tanh Accuracy:", tanh_accuracy * 100)
 
 
-        # validation accuracy 
-        model.eval()
-        correct = 0 
-        total = 0 
+plt.plot(relu_history.history['accuracy'], label='ReLU')
+plt.plot(sigmoid_history.history['accuracy'], label='Sigmoid')
+plt.plot(tanh_history.history['accuracy'], label='Tanh')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.title('Accuracy Comparison')
+plt.legend()
+plt.show()
 
-        with torch.no_grad():
-            for images, labels in val_loader:
-                outputs = model(images)
-                predicted = outputs.argmax(1)
-                total += labels.size(0) 
-                correct += (predicted == labels).sum().item()
 
-        val_accuracies.append(100 * correct / total)
-        epoch_time.append(time.time() - start_time)
+plt.plot(relu_history.history['loss'], label='ReLU')
+plt.plot(sigmoid_history.history['loss'], label='Sigmoid')
+plt.plot(tanh_history.history['loss'], label='Tanh')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('Loss Comparison')
+plt.legend()
+plt.show()
 
-        print(
-            "Epoch: ", epoch+1,
-            "| Train Accuracy: ", round(train_accuracies[-1], 2), "%",
-            "| Validation Accuracy: ", round(val_accuracies[-1], 2), "%"
+
+
+
+def get_gradients(model):
+    with tf.GradientTape() as tape:
+        predictions = model(X_train[:64], training=True)
+        loss = tf.keras.losses.sparse_categorical_crossentropy(
+            y_train[:64], predictions
         )
+        loss = tf.reduce_mean(loss)
 
-    return train_accuracies, val_accuracies, epoch_time, gradient_flow
+    gradients = tape.gradient(loss, model.trainable_variables)
+    return [tf.reduce_mean(tf.abs(g)).numpy() for g in gradients if g is not None]
 
-
-# Train the model with three activation functions 
-
-activations = ["sigmoid", "tanh", "relu"]
-models = {}
-histories = {}
-training_times = {}
-test_accuracies = {}
-
-for act in activations:
-    print("Training with ", act)
-
-    # Use the same starting weight for fair comparison
-    torch.manual_seed(42)
-    model = NeuralNetwork(act)
-
-    start = time.time()
-    history = train_model(model, epochs=5)
-    training_times[act] = time.time() - start 
-
-    models[act] = model 
-    histories[act] = history
-
-    # Test accuracy
-    model.eval()
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for images, labels in test_loader:
-            outputs = model(images)
-            predicted = outputs.argmax(1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-    test_accuracies[act] = 100 * correct / total
-    print("Test Accuracy:", round(test_accuracies[act], 2), "%")
-    print("Total Training Time: ", round(training_times[act], 2), "seconds")
-
-
-
-# Compare Training and Validation Accuracy
-
-plt.figure(figsize=(10,5))
-
-for act in activations:
-    plt.plot(histories[act][0], marker="o", label= act + "- Training")
-    plt.plot(histories[act][1], marker="x", linestyle="--", label= act + "- Validation")
-
-plt.title("Accuracy Comparison")
-plt.xlabel("Epochs")
-plt.ylabel("Accuracy (%)")
+plt.plot(get_gradients(relu_model), label='ReLU')
+plt.plot(get_gradients(sigmoid_model), label='Sigmoid')
+plt.plot(get_gradients(tanh_model), label='Tanh')
+plt.xlabel('Layer')
+plt.ylabel('Gradient Magnitude')
+plt.title('Gradient Flow Comparison')
 plt.legend()
-plt.grid()
-plt.show()
-
-
-# Compare Total Training Time
-
-plt.figure(figsize=(7,4))
-plt.bar(activations, [training_times[a] for a in activations])
-plt.title("Training Time Comparison")
-plt.xlabel("Activation Fuction")
-plt.ylabel("Time (seconds)")
-plt.show()
-
-
-# Compare test accuracy
-
-plt.figure(figsize=(7, 4))
-plt.bar(activations, [test_accuracies[a] for a in activations])
-plt.title("Test Accuracy Comparison")
-plt.xlabel("Activation Function")
-plt.ylabel("Accuracy (%)")
-plt.ylim(0, 100)
-plt.show()
-
-
-# Visualize gradient flow in the hidden layers
-
-plt.figure(figsize=(8, 5))
-
-for act in activations:
-    gradients = histories[act][3]
-    layer1 = [g[0] for g in gradients]
-    layer2 = [g[1] for g in gradients]
-
-    plt.plot(layer1, marker="o", label=act + " - Hidden Layer 1")
-    plt.plot(layer2, marker="x", linestyle="--", label=act + " - Hidden Layer 2")
-
-plt.title("Gradient Flow Comparison")
-plt.xlabel("Epochs")
-plt.ylabel("Average Gradient Norm")
-plt.legend()
-plt.grid()
 plt.show()

@@ -1,80 +1,63 @@
 import pandas as pd
-import tensorflow as tf 
-import matplotlib.pyplot as plt 
-import numpy as np
-
+import tensorflow as tf
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences 
 
 
 df = pd.read_csv("./Dataset/IMDB/IMDB Dataset.csv")
 
-X = df['review']
-y = df['sentiment'].map({'positive': 1, 'negative': 0})
-
-
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    df['review'], df['sentiment'].map({'positive':1, 'negative':0}),
+    test_size=0.2, random_state=42
 )
 
-tokenizer = Tokenizer(num_words=10000)
+
+vocab_size = 10000
+
+tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=vocab_size, oov_token='<OOV>')
 tokenizer.fit_on_texts(X_train)
 
-X_train = tokenizer.texts_to_sequences(X_train)
-X_test = tokenizer.texts_to_sequences(X_test)
-
-X_train = pad_sequences(X_train, maxlen=200)
-X_test = pad_sequences(X_test, maxlen=200)
-
+x_train = tf.keras.preprocessing.sequence.pad_sequences(
+    tokenizer.texts_to_sequences(X_train), maxlen=250
+)
+x_test = tf.keras.preprocessing.sequence.pad_sequences(
+    tokenizer.texts_to_sequences(X_test), maxlen=250
+)
 
 model = tf.keras.Sequential([
-    tf.keras.Input(shape=(200,)),
-    tf.keras.layers.Embedding(10000, 32),
-    tf.keras.layers.LSTM(32),
-    tf.keras.layers.Dense(1, activation='sigmoid')
+    tf.keras.layers.Embedding(vocab_size, 128),
+    tf.keras.layers.SpatialDropout1D(0.3),
+    tf.keras.layers.LSTM(100, dropout=0.3),
+    tf.keras.layers.Dense(1, activation='sigmoid',
+        kernel_regularizer=tf.keras.regularizers.l2(0.001))
 ])
 
-model.compile(
-    optimizer='adam',
-    loss='binary_crossentropy',
-    metrics=['accuracy']
-)
+model.compile(optimizer='adam',
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
 
-model.summary()
+history = model.fit(x_train, y_train, epochs=5, batch_size=64,
+                    validation_data=(x_test, y_test))
 
-
-history = model.fit(
-    X_train, y_train,
-    epochs=5,
-    batch_size=64,
-    validation_split=0.2
-)
+loss, accuracy = model.evaluate(x_test, y_test)
+print("Test Accuracy:", accuracy * 100, "%")
 
 
-plt.plot(history.history['accuracy'], label='Training accuracy')
-plt.plot(history.history['val_accuracy'], label='Validation accuracy')
 
-plt.title("LSTM Model Accuracy")
-plt.xlabel("epochs")
-plt.ylabel("Accuracy")
+# Accuracy Graph
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
 plt.legend()
-plt.grid()
+plt.show()
 
 
-loss, accuracy = model.evaluate(X_test, y_test)
+# Example Predictions
+predictions = model.predict(x_test[:5])
 
-print("Test Loss: ", loss) 
-print("Test Accuracy: ", accuracy * 100, "%") 
-
-
-predictions = model.predict(X_test[:10])
-
-for i in range(10):
-    actual = "Positive" if y_test.iloc[i] == 1 else "Negative"
-    predicted = "Positive" if predictions[i][0] >= 0.5 else "Negative" 
-
-    print("Review: ", i+1)
-    print("Actual Sentiment: ", actual)
-    print("Predicted Sentiment: ", predicted)
-    print("----------------------")
+for i in range(5):
+    print("Review:", X_test.iloc[i][:100])
+    print("Actual:", "Positive" if y_test.iloc[i] == 1 else "Negative")
+    print("Predicted:", "Positive" if predictions[i][0] >= 0.5 else "Negative")
+    print()

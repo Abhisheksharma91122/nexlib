@@ -1,196 +1,68 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
 import pandas as pd
+import tensorflow as tf
 import matplotlib.pyplot as plt
 
-from torch.utils.data import TensorDataset, DataLoader, random_split
 
-def load(p):
-    d = pd.read_csv(p).values
-    return TensorDataset(torch.tensor(d[:, 1:], dtype=torch.float32) / 255, torch.tensor(d[:, 0]))
+train = pd.read_csv('./Handwritten/mnist_train.csv')
+test = pd.read_csv('./Handwritten/mnist_test.csv')
 
-train, val = random_split(load("./Handwritten/mnist_train.csv"), [0.8, 0.2])
-train_loader = DataLoader(train, 64, shuffle=True)
-val_loader = DataLoader(val, 64)
-test_loader = DataLoader(load("./Handwritten/mnist_test.csv"), 64)
+X_train, y_train = train.iloc[:,1:].values/255.0, train.iloc[:,0]
+X_test, y_test = test.iloc[:,1:].values/255.0, test.iloc[:,0]
 
 
-class NeuralNetwork(nn.Module):
+def create_model(regularization=None, dropout=False):
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(784,)),
+        tf.keras.layers.Dense(128, activation='relu',
+                              kernel_regularizer=regularization),
+        tf.keras.layers.Dropout(0.5) if dropout else tf.keras.layers.Activation('linear'),
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(10, activation='softmax')
+    ])
 
-    def __init__(self, dropout=False):
-        super().__init__()
-        self.fc1 = nn.Linear(784, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 10)
-        self.relu = nn.ReLU()
-        self.drop = nn.Dropout(0.5) if dropout else nn.Identity()
-
-    def forward(self, x):
-        x = x.view(-1, 784)
-        x = self.relu(self.fc1(x))
-        x = self.drop(x)
-        x = self.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+    return model
 
 
-def train_model(model, optimizer, epochs=5):
+model = create_model()
+history = model.fit(X_train, y_train, epochs=5, batch_size=64,
+                    validation_data=(X_test, y_test))
 
-    train_losses = []
-    val_losses = []
+loss, accuracy = model.evaluate(X_test, y_test)
+print("Without Regularization:", accuracy*100)
 
-    train_accuracies = []
-    val_accuracies = []
+l2_model = create_model(tf.keras.regularizers.l2(0.001))
+l2_history = l2_model.fit(X_train, y_train, epochs=5, batch_size=64,
+                          validation_data=(X_test, y_test))
 
-    criterion = nn.CrossEntropyLoss()
+loss, accuracy = l2_model.evaluate(X_test, y_test)
+print("With L2 Regularization:", accuracy*100)
 
-    for epoch in range(epochs):
-        # Training
-        model.train()
+dropout_model = create_model(dropout=True)
+dropout_history = dropout_model.fit(X_train, y_train, epochs=5, batch_size=64,
+                                    validation_data=(X_test, y_test))
 
-        total_loss = 0
-        correct = 0
-        total = 0
-
-        for images, labels in train_loader:
-            
-            #forward pass
-            outputs = model(images)
-            
-            #calculate loss 
-            loss = criterion(outputs, labels)
-            
-            # Backward pass and update weights
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            # Calculate correct predictions
-            predicted = outputs.argmax(1)
-            
-            total_loss += loss.item()
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-
-        accuracy = (100 * correct / total)
-        avg_loss = (total_loss/len(train_loader))
-
-        train_losses.append(avg_loss)
-        train_accuracies.append(accuracy)
-
-        # Validation
-        model.eval()
-
-        val_loss = 0
-        correct = 0
-        total = 0
-
-        with torch.no_grad():
-            for images, labels in val_loader:
-                outputs = model(images)
-
-                loss = criterion(outputs, labels)
-
-                val_loss += loss.item()
-
-                predicted = outputs.argmax(1)
-
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-
-        val_losses.append(val_loss / len(val_loader))
-        val_accuracies.append(100 * correct / total)
-
-        print("Epoch:", epoch + 1,
-              "Train Accuracy:", round(train_accuracies[-1], 2),
-              "Validation Accuracy:", round(val_accuracies[-1], 2))
-
-    return train_losses, val_losses, train_accuracies, val_accuracies
+loss, accuracy = dropout_model.evaluate(X_test, y_test)
+print("With Dropout:", accuracy*100)
 
 
-
-model1 = NeuralNetwork(dropout=False)
-
-optimizer1 = optim.Adam(model1.parameters(), lr=0.001)
-
-history1 = train_model(model1, optimizer1)
-
-
-model2 = NeuralNetwork(dropout=False)
-
-optimizer2 = optim.Adam(
-    model2.parameters(),
-    lr=0.001,
-    weight_decay=0.0001
-)
-
-history2 = train_model(model2, optimizer2)
-
-
-model3 = NeuralNetwork(dropout=True)
-
-optimizer3 = optim.Adam(model3.parameters(), lr=0.001)
-
-history3 = train_model(model3, optimizer3)
-
-
-plt.figure(figsize=(12, 5))
-
-# Training Loss
-plt.subplot(1, 2, 1)
-
-plt.plot(history1[0], label="Without Regularization")
-plt.plot(history2[0], label="L2 Regularization")
-plt.plot(history3[0], label="Dropout")
-
-plt.title("Training Loss")
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
+plt.plot(history.history['loss'], label='No Regularization')
+plt.plot(l2_history.history['loss'], label='L2 Regularization')
+plt.plot(dropout_history.history['loss'], label='Dropout')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('Loss Comparison')
 plt.legend()
-
-# Validation Loss
-plt.subplot(1, 2, 2)
-
-plt.plot(history1[1], label="Without Regularization")
-plt.plot(history2[1], label="L2 Regularization")
-plt.plot(history3[1], label="Dropout")
-
-plt.title("Validation Loss")
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
-plt.legend()
-
-plt.tight_layout()
 plt.show()
 
 
-plt.figure(figsize=(12, 5))
-
-# Training Accuracy
-plt.subplot(1, 2, 1)
-
-plt.plot(history1[2], label="Without Regularization")
-plt.plot(history2[2], label="L2 Regularization")
-plt.plot(history3[2], label="Dropout")
-
-plt.title("Training Accuracy")
-plt.xlabel("Epochs")
-plt.ylabel("Accuracy (%)")
+plt.plot(history.history['val_accuracy'], label='No Regularization')
+plt.plot(l2_history.history['val_accuracy'], label='L2 Regularization')
+plt.plot(dropout_history.history['val_accuracy'], label='Dropout')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.title('Accuracy Comparison')
 plt.legend()
-
-# Validation Accuracy
-plt.subplot(1, 2, 2)
-
-plt.plot(history1[3], label="Without Regularization")
-plt.plot(history2[3], label="L2 Regularization")
-plt.plot(history3[3], label="Dropout")
-
-plt.title("Validation Accuracy")
-plt.xlabel("Epochs")
-plt.ylabel("Accuracy (%)")
-plt.legend()
-
-plt.tight_layout()
 plt.show()
-

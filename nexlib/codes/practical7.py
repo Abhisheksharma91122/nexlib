@@ -1,58 +1,76 @@
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from tensorflow.keras.applications import ResNet50
-from tensorflow.keras.applications.resnet50 import preprocess_input
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-
 
 train = tf.keras.utils.image_dataset_from_directory(
-    'cats_and_dogs_filtered/train', image_size=(160,160), batch_size=32)
+    './cats_and_dogs_filtered/train',
+    image_size=(150,150), batch_size=32
+)
 
-val = tf.keras.utils.image_dataset_from_directory(
-    'cats_and_dogs_filtered/validation', image_size=(160,160), batch_size=32)
+test = tf.keras.utils.image_dataset_from_directory(
+    './cats_and_dogs_filtered/validation',
+    image_size=(150,150), batch_size=32
+)
 
-train = train.map(lambda x,y: (preprocess_input(x),y)).prefetch(tf.data.AUTOTUNE)
-val = val.map(lambda x,y: (preprocess_input(x),y)).prefetch(tf.data.AUTOTUNE)
 
+# Load pretrained VGG16
+base_model = tf.keras.applications.VGG16(
+    weights='imagenet', include_top=False,
+    input_shape=(150,150,3)
+)
 
-base = ResNet50(weights='imagenet', include_top=False,
-                 input_shape=(160,160,3))
-
-base.trainable = False
+# Freeze pretrained layers
+base_model.trainable = False
 
 model = tf.keras.Sequential([
-    base,
-    GlobalAveragePooling2D(),
-    Dense(1, activation='sigmoid')
+    tf.keras.layers.Input(shape=(150,150,3)),
+    tf.keras.layers.Lambda(tf.keras.applications.vgg16.preprocess_input),
+    base_model,
+    tf.keras.layers.GlobalAveragePooling2D(),
+    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dense(1, activation='sigmoid')
 ])
 
-
-model.compile(optimizer='adam', loss='binary_crossentropy',
+model.compile(optimizer='adam',
+              loss='binary_crossentropy',
               metrics=['accuracy'])
 
-h1 = model.fit(train, validation_data=val, epochs=3)
+
+# Train with frozen layers
+history = model.fit(train, epochs=3, validation_data=test)
+
+loss, accuracy = model.evaluate(test)
+print("Frozen Model Accuracy:", accuracy*100)
 
 
-base.trainable = True
+# Fine-tune last VGG16 block
+base_model.trainable = True
 
-for layer in base.layers[:-20]:
-    layer.trainable = False
+for layer in base_model.layers:
+    layer.trainable = layer.name.startswith('block5')
 
-model.compile(optimizer=tf.keras.optimizers.Adam(0.0001),
-              loss='binary_crossentropy', metrics=['accuracy'])
+model.compile(optimizer=tf.keras.optimizers.Adam(0.00001),
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
 
-h2 = model.fit(train, validation_data=val, epochs=3)
+history2 = model.fit(train, epochs=3, validation_data=test)
+
+loss, accuracy = model.evaluate(test)
+print("Fine-tuned Model Accuracy:", accuracy*100)
 
 
-plt.plot(h1.history['accuracy'] + h2.history['accuracy'], label='Training Accuracy')
-plt.plot(h1.history['val_accuracy'] + h2.history['val_accuracy'], label='Validation Accuracy')
-plt.axvline(2.5, linestyle='--', label='Fine-Tuning Starts')
-plt.xlabel('Epochs')
+# Accuracy comparison
+plt.plot(history.history['val_accuracy'], label='Frozen')
+plt.plot(history2.history['val_accuracy'], label='Fine-tuned')
+plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
-plt.title('ResNet50: Frozen vs Fine-Tuned')
 plt.legend()
-plt.grid()
 plt.show()
 
 
-model.evaluate(val)
+# Loss comparison
+plt.plot(history.history['val_loss'], label='Frozen')
+plt.plot(history2.history['val_loss'], label='Fine-tuned')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()

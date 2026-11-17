@@ -1,14 +1,7 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[12]:
-
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-# In[13]:
 
 
 # Input data (AND gate)
@@ -24,9 +17,6 @@ y = np.array([0,0,0,1])
 
 print("Input Data:\n", X)
 print("Output Data:", y)
-
-
-# In[14]:
 
 
 class Perceptron:
@@ -61,19 +51,14 @@ class Perceptron:
    return np.array(result)
 
 
-# In[15]:
-
 
 model = Perceptron()
-
 model.fit(X, y)
 
 print("Training Completed!")
 print("Weights: ", model.w)
 print("Bias!", model.b)
 
-
-# In[16]:
 
 
 predictions = model.predict(X)
@@ -82,11 +67,10 @@ print("Predicted Output: ", predictions)
 print("Actual Output: ", y)
 
 accuracy = np.mean(predictions == y) * 100
-
 print("Accuracy: ", accuracy, "%")
 
 
-# In[17]:
+
 
 
 # Decision boundary: w1*x1 + w2*x2 + b = 0  ->  x2 = -(w1*x1 + b) / w2
@@ -105,14 +89,9 @@ plt.grid()
 plt.show()
 
 
-# In[18]:
-
 
 print("Final Weights:", model.w)
 print("Final Bias:", model.b)
-
-
-# In[14]:
 
 
 

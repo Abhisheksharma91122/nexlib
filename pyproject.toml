@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexlib"
+version = "0.1.0"
+description = "A lightweight Python utility library"
+readme = "README.md"
+requires-python = ">=3.9"
+
+[tool.setuptools.packages.find]
+include = ["nexlib*"]
+
+[tool.setuptools.package-data]
+nexlib = ["codes/*.py"]
